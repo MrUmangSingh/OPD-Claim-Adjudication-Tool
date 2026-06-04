@@ -101,6 +101,12 @@ export const api = {
 
   getPolicy: () => request<Record<string, unknown>>("/policy"),
 
+  updatePolicy: (payload: Record<string, unknown>) =>
+    request<Record<string, unknown>>("/policy", {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
+
   submitClaim: (formData: FormData) =>
     fetch(`${API_URL}/claims`, { method: "POST", body: formData }).then((r) => {
       if (!r.ok) throw new Error(`Submission failed: ${r.status}`);

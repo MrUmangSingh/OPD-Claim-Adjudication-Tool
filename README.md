@@ -33,6 +33,45 @@ AI-powered system for adjudicating (approve/reject) Outpatient Department insura
 └─────────────────────────────────────────────────────────────┘
 ```
 
+## Decision Logic Flowchart
+
+```mermaid
+flowchart TD
+    A[POST /claims with documents] --> B[Save files, create Claim, return 202]
+    B --> C{Background Task}
+    C --> D[Parallel Claude Vision extraction<br/>prescription · bill · diagnostic · pharmacy]
+    D --> E[Medical Necessity Claude call<br/>diagnosis + meds + tests]
+    E --> F[Fraud Check<br/>same-day · high-value · low confidence]
+    F --> G[Step 1: Eligibility<br/>dates · waiting periods · min amount · deadline]
+    G -->|fail| Z[REJECTED]
+    G -->|pass| H[Step 2: Documents<br/>prescription present · doctor reg regex]
+    H -->|fail| Z
+    H -->|pass| I[Step 3: Coverage<br/>exclusions · pre-auth check]
+    I -->|fail| Z
+    I -->|pass| J[Step 4: Limits<br/>per-line sub-limits · annual cap · specialty override]
+    J --> K[Step 5: Medical Necessity verdict]
+    K --> L[Network/Copay<br/>20% network discount OR 10% copay]
+    L --> M[Confidence Score<br/>1.0 minus fraud · extraction · necessity · borderline]
+    M --> N{Route Decision}
+    N -->|fraud flagged| R[MANUAL_REVIEW]
+    N -->|confidence < 0.70| R
+    N -->|all approved| P[APPROVED]
+    N -->|mixed| Q[PARTIAL]
+    R --> S[Human reviewer override<br/>POST /claims/id/review]
+    S --> T[DECIDED_BY_HUMAN]
+```
+
+## Project Resources
+
+Assignment artifacts and reference docs live in `backend/data/`:
+
+| File | Purpose |
+|------|---------|
+| `policy_terms.json` | Active policy (auto-seeded into DB on first startup) |
+| `adjudication_rules.md` | Source of truth for decision logic — `services/adjudication.py` mirrors this |
+| `test_cases.json` | TC001–TC010 evaluation suite, run via `/admin/eval` or `POST /eval/adjudication` |
+| `sample_documents_guide.md` | Sample medical documents reference for manual testing |
+
 ## Quick Start
 
 ### Backend
@@ -128,6 +167,7 @@ Fraud indicators (multiple same-day claims, high value, low extraction confidenc
 |--------|----------|-------------|
 | GET | `/health` | Health check |
 | GET | `/policy` | Active policy JSON |
+| PUT | `/policy` | Replace active policy payload (admin) |
 | GET | `/members` | All covered members |
 | POST | `/claims` | Submit claim (multipart) |
 | GET | `/claims` | List claims (optional ?status=) |

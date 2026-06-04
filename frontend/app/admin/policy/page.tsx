@@ -3,8 +3,11 @@
 import { useState, useEffect } from "react";
 import { api } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { formatCurrency } from "@/lib/utils";
-import { ShieldCheck, Loader2 } from "lucide-react";
+import { ShieldCheck, Loader2, Pencil, Save, X } from "lucide-react";
+import { toast } from "sonner";
 
 function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -17,16 +20,99 @@ function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
 
 export default function PolicyPage() {
   const [policy, setPolicy] = useState<Record<string, unknown> | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [parseError, setParseError] = useState<string | null>(null);
 
   useEffect(() => {
     api.getPolicy().then(setPolicy).catch(() => {});
   }, []);
+
+  const startEdit = () => {
+    if (!policy) return;
+    setDraft(JSON.stringify(policy, null, 2));
+    setParseError(null);
+    setEditing(true);
+  };
+
+  const cancelEdit = () => {
+    setEditing(false);
+    setDraft("");
+    setParseError(null);
+  };
+
+  const saveEdit = async () => {
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(draft);
+    } catch (e) {
+      setParseError(e instanceof Error ? e.message : "Invalid JSON");
+      return;
+    }
+    setParseError(null);
+    setSaving(true);
+    try {
+      const updated = await api.updatePolicy(parsed);
+      setPolicy(updated);
+      setEditing(false);
+      toast.success("Policy updated");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Update failed");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   if (!policy) return (
     <div className="flex items-center justify-center h-64">
       <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
     </div>
   );
+
+  if (editing) {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <ShieldCheck className="h-6 w-6 text-blue-600" />
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">Edit Policy</h1>
+              <p className="text-sm text-gray-500">
+                Modify the active policy JSON. Required keys: policy_id, effective_date, coverage_details, waiting_periods, exclusions, network_hospitals.
+              </p>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={cancelEdit} disabled={saving}>
+              <X className="h-4 w-4 mr-1" /> Cancel
+            </Button>
+            <Button onClick={saveEdit} disabled={saving}>
+              {saving ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Save className="h-4 w-4 mr-1" />}
+              Save
+            </Button>
+          </div>
+        </div>
+
+        {parseError && (
+          <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+            <strong>JSON parse error:</strong> {parseError}
+          </div>
+        )}
+
+        <Card>
+          <CardContent className="p-2">
+            <Textarea
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              spellCheck={false}
+              className="font-mono text-xs h-[70vh] resize-none"
+            />
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   const cov = policy.coverage_details as Record<string, unknown>;
   const cons = cov.consultation_fees as Record<string, unknown>;
@@ -42,12 +128,17 @@ export default function PolicyPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <ShieldCheck className="h-6 w-6 text-blue-600" />
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">{policy.policy_name as string}</h1>
-          <p className="text-sm text-gray-500">Policy ID: {policy.policy_id as string} • Effective: {policy.effective_date as string}</p>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <ShieldCheck className="h-6 w-6 text-blue-600" />
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">{policy.policy_name as string}</h1>
+            <p className="text-sm text-gray-500">Policy ID: {policy.policy_id as string} • Effective: {policy.effective_date as string}</p>
+          </div>
         </div>
+        <Button variant="outline" onClick={startEdit}>
+          <Pencil className="h-4 w-4 mr-1" /> Edit
+        </Button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
