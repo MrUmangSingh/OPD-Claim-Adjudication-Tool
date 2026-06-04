@@ -1,16 +1,16 @@
 """
-Claude multimodal vision extraction for medical documents.
-Each doc type gets a separate call with a tool_use forced structured output.
-All calls are parallelized via asyncio.gather.
+Claude multimodal vision extraction via LangChain's ChatAnthropic.
+Uses with_structured_output (tool_use under the hood) for typed extraction.
+All doc-type calls are parallelized via asyncio.gather.
 """
 
 import asyncio
 import base64
-import json
 from pathlib import Path
 from typing import Optional
 
-import anthropic
+from langchain_anthropic import ChatAnthropic
+from langchain_core.messages import HumanMessage
 from pypdf import PdfReader
 
 from ..config import settings
@@ -21,21 +21,26 @@ from ..schemas import (
     PrescriptionExtract,
 )
 
-_client: Optional[anthropic.AsyncAnthropic] = None
+_llm: Optional[ChatAnthropic] = None
 
 
-def get_client() -> anthropic.AsyncAnthropic:
-    global _client
-    if _client is None:
-        _client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
-    return _client
+def get_llm() -> ChatAnthropic:
+    global _llm
+    if _llm is None:
+        _llm = ChatAnthropic(
+            model=settings.anthropic_model,
+            api_key=settings.anthropic_api_key,
+            base_url=settings.anthropic_base_url,
+            temperature=0.1,
+            max_retries=3,
+        )
+    return _llm
 
 
 def _encode_file(file_path: Path) -> tuple[str, str]:
-    """Return (media_type, base64_data). Converts PDFs to images via first page."""
+    """Return (media_type, base64_data|text). PDFs are text-extracted."""
     suffix = file_path.suffix.lower()
     if suffix == ".pdf":
-        # Extract text instead of rasterizing for PDFs
         reader = PdfReader(str(file_path))
         text = "\n".join(page.extract_text() or "" for page in reader.pages)
         return "text/plain", text
@@ -50,80 +55,62 @@ def _encode_file(file_path: Path) -> tuple[str, str]:
             return "image/jpeg", base64.standard_b64encode(f.read()).decode()
 
 
-def _build_content(media_type: str, data: str, prompt: str) -> list:
+def _build_message(media_type: str, data: str, prompt: str) -> HumanMessage:
     if media_type == "text/plain":
-        return [{"type": "text", "text": f"{prompt}\n\nDocument text:\n{data}"}]
-    return [
-        {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": data}},
+        return HumanMessage(content=f"{prompt}\n\nDocument text:\n{data}")
+    return HumanMessage(content=[
+        {"type": "image_url", "image_url": {"url": f"data:{media_type};base64,{data}"}},
         {"type": "text", "text": prompt},
-    ]
+    ])
 
 
-async def _extract_with_tool(file_path: Path, doc_type: str, tool_schema: dict, prompt: str) -> dict:
-    client = get_client()
+async def _extract_typed(file_path: Path, schema, prompt: str):
+    """Run structured extraction via with_structured_output on a thread (LangChain is sync)."""
+    llm = get_llm()
+    chain = llm.with_structured_output(schema)
     media_type, data = _encode_file(file_path)
-    content = _build_content(media_type, data, prompt)
-
-    response = await client.messages.create(
-        model=settings.claude_model,
-        max_tokens=1024,
-        tools=[{
-            "name": "extract_document",
-            "description": f"Extract structured fields from a medical {doc_type}",
-            "input_schema": tool_schema,
-        }],
-        tool_choice={"type": "tool", "name": "extract_document"},
-        messages=[{"role": "user", "content": content}],
-    )
-
-    for block in response.content:
-        if block.type == "tool_use":
-            return block.input
-
-    return {}
+    message = _build_message(media_type, data, prompt)
+    # LangChain's invoke is synchronous; run in thread to avoid blocking the event loop
+    return await asyncio.get_event_loop().run_in_executor(None, chain.invoke, [message])
 
 
 async def extract_prescription(file_path: Path) -> PrescriptionExtract:
-    schema = PrescriptionExtract.model_json_schema()
     prompt = (
         "Extract all fields from this medical prescription. "
         "Set extraction_confidence between 0 and 1 based on document clarity. "
         "If a field is not visible, leave it as an empty string."
     )
-    raw = await _extract_with_tool(file_path, "prescription", schema, prompt)
-    return PrescriptionExtract.model_validate(raw)
+    result = await _extract_typed(file_path, PrescriptionExtract, prompt)
+    return result if isinstance(result, PrescriptionExtract) else PrescriptionExtract.model_validate(result)
 
 
 async def extract_bill(file_path: Path) -> BillExtract:
-    schema = BillExtract.model_json_schema()
     prompt = (
         "Extract all fields from this medical bill/invoice. "
         "For each line item, classify category as: consultation, diagnostic, pharmacy, procedure, or other. "
         "Set extraction_confidence between 0 and 1 based on document clarity."
     )
-    raw = await _extract_with_tool(file_path, "bill", schema, prompt)
-    return BillExtract.model_validate(raw)
+    result = await _extract_typed(file_path, BillExtract, prompt)
+    return result if isinstance(result, BillExtract) else BillExtract.model_validate(result)
 
 
 async def extract_diagnostic_report(file_path: Path) -> DiagnosticReportExtract:
-    schema = DiagnosticReportExtract.model_json_schema()
     prompt = (
         "Extract all fields from this diagnostic test report. "
         "For each test result, note if it's outside the normal range. "
         "Set extraction_confidence between 0 and 1 based on document clarity."
     )
-    raw = await _extract_with_tool(file_path, "diagnostic report", schema, prompt)
-    return DiagnosticReportExtract.model_validate(raw)
+    result = await _extract_typed(file_path, DiagnosticReportExtract, prompt)
+    return result if isinstance(result, DiagnosticReportExtract) else DiagnosticReportExtract.model_validate(result)
 
 
 async def extract_pharmacy_bill(file_path: Path) -> PharmacyBillExtract:
-    schema = PharmacyBillExtract.model_json_schema()
     prompt = (
         "Extract all fields from this pharmacy bill. "
         "Set extraction_confidence between 0 and 1 based on document clarity."
     )
-    raw = await _extract_with_tool(file_path, "pharmacy bill", schema, prompt)
-    return PharmacyBillExtract.model_validate(raw)
+    result = await _extract_typed(file_path, PharmacyBillExtract, prompt)
+    return result if isinstance(result, PharmacyBillExtract) else PharmacyBillExtract.model_validate(result)
 
 
 EXTRACTOR_MAP = {
@@ -157,36 +144,25 @@ async def assess_medical_necessity(
     tests: list[str],
 ) -> dict:
     """Ask Claude if the meds/tests are medically appropriate for the diagnosis."""
-    client = get_client()
+    from pydantic import BaseModel, Field
+
+    class NecessityResult(BaseModel):
+        appropriate: bool
+        confidence: float = Field(ge=0, le=1)
+        reasoning: str
+
+    llm = get_llm()
+    chain = llm.with_structured_output(NecessityResult)
+
     prompt = (
         f"Diagnosis: {diagnosis}\n"
         f"Medicines prescribed: {', '.join(medicines) if medicines else 'None'}\n"
         f"Tests ordered: {', '.join(tests) if tests else 'None'}\n\n"
         "Are these medicines and tests medically appropriate for this diagnosis? "
-        "Consider standard medical protocols. Respond with appropriate (true/false), "
-        "confidence (0-1), and a brief reasoning string."
+        "Consider standard medical protocols."
     )
 
-    tool_schema = {
-        "type": "object",
-        "properties": {
-            "appropriate": {"type": "boolean"},
-            "confidence": {"type": "number", "minimum": 0, "maximum": 1},
-            "reasoning": {"type": "string"},
-        },
-        "required": ["appropriate", "confidence", "reasoning"],
-    }
-
-    response = await client.messages.create(
-        model=settings.claude_model,
-        max_tokens=256,
-        tools=[{"name": "assess_necessity", "description": "Assess medical necessity", "input_schema": tool_schema}],
-        tool_choice={"type": "tool", "name": "assess_necessity"},
-        messages=[{"role": "user", "content": prompt}],
+    result = await asyncio.get_event_loop().run_in_executor(
+        None, chain.invoke, [HumanMessage(content=prompt)]
     )
-
-    for block in response.content:
-        if block.type == "tool_use":
-            return block.input
-
-    return {"appropriate": True, "confidence": 0.8, "reasoning": "Unable to assess"}
+    return result.model_dump() if hasattr(result, "model_dump") else {"appropriate": True, "confidence": 0.8, "reasoning": "Unable to assess"}
