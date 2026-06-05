@@ -16,10 +16,13 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="$SCRIPT_DIR/.env"
 if [[ -f "$ENV_FILE" ]]; then
-  set -o allexport
-  # shellcheck disable=SC1090
-  source "$ENV_FILE"
-  set +o allexport
+  # strip surrounding quotes before exporting so values like KEY="val" work correctly
+  while IFS='=' read -r key value; do
+    [[ "$key" =~ ^#.*$ || -z "$key" ]] && continue
+    value="${value%\"}" ; value="${value#\"}"
+    value="${value%\'}" ; value="${value#\'}"
+    export "$key=$value"
+  done < "$ENV_FILE"
 else
   echo "ERROR: $ENV_FILE not found. Copy .env.example to .env and fill in the values."
   exit 1

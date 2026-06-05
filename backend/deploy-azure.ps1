@@ -23,7 +23,9 @@ if (-not (Test-Path $EnvFile)) {
 foreach ($line in Get-Content $EnvFile) {
     if ($line -match '^\s*#' -or $line.Trim() -eq '') { continue }
     $key, $value = $line -split '=', 2
-    [System.Environment]::SetEnvironmentVariable($key.Trim(), $value.Trim(), 'Process')
+    # strip surrounding quotes that editors/shells sometimes add
+    $value = $value.Trim().Trim('"').Trim("'")
+    [System.Environment]::SetEnvironmentVariable($key.Trim(), $value, 'Process')
 }
 
 # ── Configurable defaults ─────────────────────────────────────────────────────
@@ -144,6 +146,16 @@ $SubscriptionId = (az account show --query id -o tsv)
 $EnvResourceId = "/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroup/providers/Microsoft.App/managedEnvironments/$EnvironmentName"
 $YamlFile = [System.IO.Path]::GetTempFileName() -replace '\.tmp$', '.yaml'
 
+# Wrap values in YAML single-quoted scalars so brackets, colons, and inner
+# quotes from JSON-style env values (e.g. ALLOWED_ORIGINS=["..."]) don't break
+# the YAML parser. Single-quote escaping rule: ' -> ''
+function ys($s) { "'" + ($s -replace "'", "''") + "'" }
+$yAnthropic     = ys $AnthropicApiKey
+$yJwt           = ys $JwtSecret
+$yAcr           = ys $AcrPassword
+$yOrigins       = ys $AllowedOrigins
+$yImage         = ys $ImageName
+
 @"
 location: $Location
 properties:
@@ -160,11 +172,11 @@ properties:
         passwordSecretRef: acr-password
     secrets:
       - name: anthropic-api-key
-        value: "$AnthropicApiKey"
+        value: $yAnthropic
       - name: jwt-secret
-        value: "$JwtSecret"
+        value: $yJwt
       - name: acr-password
-        value: "$AcrPassword"
+        value: $yAcr
   template:
     volumes:
       - name: db-vol
@@ -175,7 +187,7 @@ properties:
         storageName: opd-uploads
     containers:
       - name: backend
-        image: $ImageName
+        image: $yImage
         resources:
           cpu: 0.5
           memory: 1Gi
@@ -185,7 +197,7 @@ properties:
           - name: JWT_SECRET
             secretRef: jwt-secret
           - name: ALLOWED_ORIGINS
-            value: "$AllowedOrigins"
+            value: $yOrigins
         volumeMounts:
           - volumeName: db-vol
             mountPath: /mnt/db

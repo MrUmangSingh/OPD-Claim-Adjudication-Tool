@@ -10,6 +10,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
+const DEMO_CREDENTIALS = [
+  { label: "User", email: "ramesh.k@test", password: "password123" },
+  { label: "Admin", email: "admin@test", password: "admin123" },
+];
+
 export default function LoginPage() {
   const router = useRouter();
   const { login } = useAuth();
@@ -80,6 +85,26 @@ export default function LoginPage() {
             </form>
           </CardContent>
         </Card>
+
+        <div className="rounded-lg border border-dashed border-gray-300 bg-white p-4 space-y-2">
+          <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Demo credentials</p>
+          <div className="space-y-1.5">
+            {DEMO_CREDENTIALS.map((cred) => (
+              <button
+                key={cred.label}
+                type="button"
+                onClick={() => { setEmail(cred.email); setPassword(cred.password); }}
+                className="w-full text-left rounded-md px-3 py-2 bg-gray-50 hover:bg-blue-50 hover:border-blue-200 border border-transparent transition-colors group"
+              >
+                <span className="text-xs font-semibold text-gray-500 group-hover:text-blue-600 mr-2">{cred.label}</span>
+                <span className="text-xs text-gray-400 font-mono">{cred.email}</span>
+                <span className="text-xs text-gray-300 mx-1">/</span>
+                <span className="text-xs text-gray-400 font-mono">{cred.password}</span>
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-gray-400">Click a row to fill the form.</p>
+        </div>
 
       </div>
     </div>
