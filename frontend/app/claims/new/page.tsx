@@ -9,13 +9,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Upload, X, FileText, Loader2 } from "lucide-react";
+import { Upload, X, FileText, Loader2, Eye } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { AuthGate } from "@/components/auth-gate";
 
 interface UploadedFile {
   file: File;
   docType: string;
+  previewUrl: string;
+  isImage: boolean;
 }
 
 const DOC_TYPES = [
@@ -37,17 +39,30 @@ function NewClaimForm() {
     cashless_request: false,
   });
   const [files, setFiles] = useState<UploadedFile[]>([]);
+  const [preview, setPreview] = useState<{ url: string; name: string; isImage: boolean } | null>(null);
+
+  const makeUploadedFile = (f: File): UploadedFile => ({
+    file: f,
+    docType: "bill",
+    previewUrl: URL.createObjectURL(f),
+    isImage: f.type.startsWith("image/"),
+  });
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
-    const dropped = Array.from(e.dataTransfer.files).map((f) => ({ file: f, docType: "bill" }));
+    const dropped = Array.from(e.dataTransfer.files).map(makeUploadedFile);
     setFiles((prev) => [...prev, ...dropped]);
   }, []);
 
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selected = Array.from(e.target.files || []).map((f) => ({ file: f, docType: "bill" }));
+    const selected = Array.from(e.target.files || []).map(makeUploadedFile);
     setFiles((prev) => [...prev, ...selected]);
     e.target.value = "";
+  };
+
+  const removeFile = (idx: number) => {
+    URL.revokeObjectURL(files[idx].previewUrl);
+    setFiles(files.filter((_, i) => i !== idx));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -141,8 +156,18 @@ function NewClaimForm() {
               <div className="space-y-2">
                 {files.map((f, idx) => (
                   <div key={idx} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                    <FileText className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                    {f.isImage ? (
+                      <img src={f.previewUrl} alt={f.file.name}
+                        className="h-10 w-10 object-cover rounded border border-gray-200 flex-shrink-0 cursor-pointer"
+                        onClick={() => setPreview({ url: f.previewUrl, name: f.file.name, isImage: true })} />
+                    ) : (
+                      <FileText className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                    )}
                     <span className="text-sm flex-1 truncate">{f.file.name}</span>
+                    <button type="button" className="text-gray-400 hover:text-blue-500"
+                      onClick={() => setPreview({ url: f.previewUrl, name: f.file.name, isImage: f.isImage })}>
+                      <Eye className="h-4 w-4" />
+                    </button>
                     <Select value={f.docType} onValueChange={(v) => {
                       if (!v) return;
                       const updated = [...files];
@@ -158,7 +183,7 @@ function NewClaimForm() {
                         ))}
                       </SelectContent>
                     </Select>
-                    <button type="button" onClick={() => setFiles(files.filter((_, i) => i !== idx))}>
+                    <button type="button" onClick={() => removeFile(idx)}>
                       <X className="h-4 w-4 text-gray-400 hover:text-red-500" />
                     </button>
                   </div>
@@ -175,6 +200,28 @@ function NewClaimForm() {
           </Button>
         </div>
       </form>
+
+      {preview && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
+          onClick={() => setPreview(null)}>
+          <div className="relative max-w-3xl max-h-[90vh] w-full mx-4 bg-white rounded-xl shadow-2xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 py-3 border-b">
+              <span className="text-sm font-medium text-gray-700 truncate">{preview.name}</span>
+              <button onClick={() => setPreview(null)} className="text-gray-400 hover:text-gray-600">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="overflow-auto max-h-[80vh] flex items-center justify-center bg-gray-50 p-4">
+              {preview.isImage ? (
+                <img src={preview.url} alt={preview.name} className="max-w-full max-h-full object-contain rounded" />
+              ) : (
+                <iframe src={preview.url} className="w-full h-[75vh] rounded" title={preview.name} />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

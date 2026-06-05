@@ -239,6 +239,11 @@ def adjudicate(
             else:
                 sub_limit = per_claim_limit
 
+            # Zero-amount items (e.g. "included in package") are complimentary — skip limit check
+            if amt <= 0:
+                line_items.append(LineItem(name, cat, 0.0, 0.0, "approved"))
+                continue
+
             ytd_cat = ytd_usage.get(cat, 0)
             remaining = max(0.0, sub_limit - ytd_cat)
             approved = min(amt, remaining)
