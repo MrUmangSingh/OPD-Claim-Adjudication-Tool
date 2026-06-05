@@ -117,6 +117,8 @@ async def _process_claim(claim_id: int, db_factory) -> None:
             previous_claims_same_day=claim.previous_claims_same_day,
             claim_amount=claim.claim_amount,
             extraction_confidence=extraction_confidence,
+            document_patient_name=pres.get("patient_name", "") or bill.get("patient_name", ""),
+            member_name=claim.member.name if claim.member else "",
         )
 
         ytd = _ytd_usage(claim.member_id, claim.treatment_date, db)
