@@ -79,6 +79,13 @@ SEED_MEMBERS = [
         "role": "employee",
     },
     {
+        "member_id": "EMP011",
+        "name": "Suresh B",
+        "join_date": date(2025, 1, 1),
+        "email": "suresh.b@test",
+        "role": "employee",
+    },
+    {
         "member_id": "ADM001",
         "name": "Admin",
         "join_date": date(2024, 1, 1),

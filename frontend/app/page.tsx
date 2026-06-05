@@ -190,8 +190,8 @@ function EmployeeDashboard() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">My Claims</h1>
-          <p className="text-sm text-gray-500 mt-1">Welcome back, {user?.name}</p>
+          <h1 className="text-2xl font-bold text-gray-900">Welcome back, {user?.name}</h1>
+          <p className="text-sm text-gray-500 mt-1">My Claims</p>
         </div>
         <Link href="/claims/new">
           <Button size="sm" className="bg-blue-600 hover:bg-blue-700">

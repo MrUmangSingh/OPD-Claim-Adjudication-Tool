@@ -81,11 +81,6 @@ export default function LoginPage() {
           </CardContent>
         </Card>
 
-        <div className="text-center text-xs text-gray-400 space-y-1">
-          <p>Demo credentials</p>
-          <p>Employee: rajesh.kumar@test / password123</p>
-          <p>Admin: admin@test / admin123</p>
-        </div>
       </div>
     </div>
   );
