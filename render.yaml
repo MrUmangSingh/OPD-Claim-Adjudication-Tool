@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: opd-claim-adjudication-backend
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install .
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    plan: free
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: DATABASE_URL
+        value: sqlite:////var/data/opd_claims.db
+      - key: UPLOAD_DIR
+        value: /var/data/uploads
+      - key: ALLOWED_ORIGINS
+        sync: false
+    disk:
+      name: data
+      mountPath: /var/data
+      sizeGB: 1

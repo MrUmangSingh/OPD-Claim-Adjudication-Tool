@@ -9,10 +9,10 @@ from ..models import Member, Policy
 
 SEED_MEMBERS = [
     {
-        "member_id": "EMP001",
-        "name": "Rajesh Kumar",
+        "member_id": "EMP020",
+        "name": "Ramesh Kumar",
         "join_date": date(2024, 1, 1),
-        "email": "rajesh.kumar@test",
+        "email": "ramesh.k@test",
         "role": "employee",
     },
     {
