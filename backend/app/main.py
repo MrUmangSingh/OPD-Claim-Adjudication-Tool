@@ -6,7 +6,7 @@ from .config import settings
 from .db import engine, SessionLocal
 from .models import Base
 from .services.seed import seed_database
-from .routers import claims, eval, members, policy
+from .routers import auth, claims, eval, me, members, policy
 
 
 @asynccontextmanager
@@ -35,8 +35,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth.router)
 app.include_router(claims.router)
 app.include_router(eval.router)
+app.include_router(me.router)
 app.include_router(members.router)
 app.include_router(policy.router)
 

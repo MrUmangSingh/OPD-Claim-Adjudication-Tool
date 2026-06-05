@@ -5,6 +5,7 @@ from datetime import date
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from ..auth import require_admin
 from ..config import TEST_CASES_FILE
 from ..db import get_db
 from ..models import Member, Policy
@@ -12,7 +13,7 @@ from ..schemas import EvalCaseResult, EvalResult
 from ..services.adjudication import adjudicate
 from ..services.fraud import check_fraud
 
-router = APIRouter(prefix="/eval", tags=["evaluation"])
+router = APIRouter(prefix="/eval", tags=["evaluation"], dependencies=[Depends(require_admin)])
 
 
 @router.post("/adjudication", response_model=EvalResult)

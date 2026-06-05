@@ -27,6 +27,8 @@ class ClaimResponse(BaseModel):
     cashless_request: bool
     created_at: datetime
     decision: Optional["DecisionResponse"] = None
+    decided_by_human: bool = False
+    effective_decision: Optional[str] = None  # APPROVED/REJECTED/PARTIAL regardless of who decided
 
     model_config = {"from_attributes": True}
 

@@ -24,6 +24,9 @@ class Member(Base):
     join_date: Mapped[date] = mapped_column(Date)
     is_dependent: Mapped[bool] = mapped_column(Boolean, default=False)
     employee_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    email: Mapped[Optional[str]] = mapped_column(String(200), unique=True, nullable=True, index=True)
+    password_hash: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    role: Mapped[str] = mapped_column(String(20), default="employee")
 
     claims: Mapped[list["Claim"]] = relationship("Claim", back_populates="member")
 
@@ -85,7 +88,7 @@ class Decision(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     claim_id: Mapped[int] = mapped_column(Integer, ForeignKey("claims.id"), unique=True)
     decision: Mapped[str] = mapped_column(String(20))
-    # APPROVED | REJECTED | PARTIAL | MANUAL_REVIEW | DECIDED_BY_HUMAN
+    # APPROVED | REJECTED | PARTIAL | MANUAL_REVIEW
     approved_amount: Mapped[float] = mapped_column(Float, default=0.0)
     total_copay: Mapped[float] = mapped_column(Float, default=0.0)
     total_discount: Mapped[float] = mapped_column(Float, default=0.0)

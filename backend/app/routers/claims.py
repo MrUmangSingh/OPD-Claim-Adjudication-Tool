@@ -1,19 +1,19 @@
 import hashlib
-import shutil
 import uuid
 from datetime import date
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
-from sqlalchemy import func, extract
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session, selectinload
 
+from ..auth import get_current_user, require_admin
 from ..config import UPLOAD_DIR
 from ..db import get_db
 from ..models import Claim, Decision, DecisionLineItem, Document, ExtractedFields, Member, Policy, ReviewAction
 from ..schemas import ClaimResponse, DecisionResponse, ReviewActionCreate, ReviewActionResponse
 from ..services.adjudication import adjudicate, LineItem
+from ..services.benefits import ytd_usage
 from ..services.extraction import assess_medical_necessity, extract_documents
 from ..services.fraud import check_fraud
 
@@ -36,23 +36,6 @@ def _get_member(member_id: str, db: Session) -> Member:
     if not member:
         raise HTTPException(status_code=404, detail=f"Member '{member_id}' not found")
     return member
-
-
-def _ytd_usage(member_id: str, treatment_date: date, db: Session) -> dict[str, float]:
-    year = treatment_date.year
-    rows = (
-        db.query(DecisionLineItem.category, func.sum(DecisionLineItem.approved_amount))
-        .join(Decision, Decision.id == DecisionLineItem.decision_id)
-        .join(Claim, Claim.id == Decision.claim_id)
-        .filter(
-            Claim.member_id == member_id,
-            extract("year", Claim.treatment_date) == year,
-            Decision.decision.in_(["APPROVED", "PARTIAL", "DECIDED_BY_HUMAN"]),
-        )
-        .group_by(DecisionLineItem.category)
-        .all()
-    )
-    return {cat: float(amt or 0) for cat, amt in rows}
 
 
 async def _process_claim(claim_id: int, db_factory) -> None:
@@ -121,7 +104,7 @@ async def _process_claim(claim_id: int, db_factory) -> None:
             member_name=claim.member.name if claim.member else "",
         )
 
-        ytd = _ytd_usage(claim.member_id, claim.treatment_date, db)
+        ytd = ytd_usage(claim.member_id, claim.treatment_date, db)
 
         result = adjudicate(
             policy=policy_data,
@@ -187,7 +170,6 @@ async def _process_claim(claim_id: int, db_factory) -> None:
 @router.post("", response_model=ClaimResponse, status_code=202)
 async def submit_claim(
     background_tasks: BackgroundTasks,
-    member_id: str = Form(...),
     treatment_date: date = Form(...),
     claim_amount: float = Form(...),
     hospital: Optional[str] = Form(None),
@@ -195,14 +177,16 @@ async def submit_claim(
     previous_claims_same_day: int = Form(0),
     files: list[UploadFile] = File(default=[]),
     doc_types: list[str] = Form(default=[]),
+    current_user: Member = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    member = _get_member(member_id, db)
+    if current_user.role == "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admins cannot submit claims")
     _get_policy(db)
 
     claim = Claim(
         claim_ref=_claim_ref(),
-        member_id=member_id,
+        member_id=current_user.member_id,
         hospital=hospital,
         treatment_date=treatment_date,
         submission_date=date.today(),
@@ -239,7 +223,7 @@ async def submit_claim(
     from ..db import SessionLocal
     background_tasks.add_task(_process_claim, claim.id, SessionLocal)
 
-    return _claim_to_response(claim, member)
+    return _claim_to_response(claim, current_user)
 
 
 @router.get("", response_model=list[ClaimResponse])
@@ -247,12 +231,16 @@ def list_claims(
     skip: int = 0,
     limit: int = 50,
     status: Optional[str] = None,
+    current_user: Member = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     q = db.query(Claim).options(
         selectinload(Claim.member),
         selectinload(Claim.decision).selectinload(Decision.line_items),
+        selectinload(Claim.review_actions),
     )
+    if current_user.role == "employee":
+        q = q.filter(Claim.member_id == current_user.member_id)
     if status:
         q = q.filter(Claim.status == status)
     claims = q.order_by(Claim.created_at.desc()).offset(skip).limit(limit).all()
@@ -260,7 +248,11 @@ def list_claims(
 
 
 @router.get("/{claim_id}", response_model=ClaimResponse)
-def get_claim(claim_id: int, db: Session = Depends(get_db)):
+def get_claim(
+    claim_id: int,
+    current_user: Member = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     claim = (
         db.query(Claim)
         .options(
@@ -275,6 +267,8 @@ def get_claim(claim_id: int, db: Session = Depends(get_db)):
     )
     if not claim:
         raise HTTPException(status_code=404, detail="Claim not found")
+    if current_user.role != "admin" and claim.member_id != current_user.member_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
     return _claim_to_response(claim, claim.member)
 
 
@@ -282,6 +276,7 @@ def get_claim(claim_id: int, db: Session = Depends(get_db)):
 def submit_review(
     claim_id: int,
     body: ReviewActionCreate,
+    current_user: Member = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
     claim = db.query(Claim).filter(Claim.id == claim_id).first()
@@ -300,9 +295,11 @@ def submit_review(
     db.add(action)
 
     if claim.decision:
-        claim.decision.decision = "DECIDED_BY_HUMAN"
+        claim.decision.decision = body.override_decision  # store actual outcome, not "DECIDED_BY_HUMAN"
         if body.override_amount is not None:
             claim.decision.approved_amount = body.override_amount
+        elif body.override_decision == "REJECTED":
+            claim.decision.approved_amount = 0.0
         claim.decision.notes = (claim.decision.notes or "") + f"\n[Override] {body.reviewer_notes}"
 
     claim.status = "decided_by_human"
@@ -337,6 +334,9 @@ def _claim_to_response(claim: Claim, member: Optional[Member]) -> ClaimResponse:
             ],
             created_at=d.created_at,
         )
+    decided_by_human = claim.status == "decided_by_human"
+    effective_decision = claim.decision.decision if claim.decision else None
+
     return ClaimResponse(
         id=claim.id,
         claim_ref=claim.claim_ref,
@@ -350,4 +350,6 @@ def _claim_to_response(claim: Claim, member: Optional[Member]) -> ClaimResponse:
         cashless_request=claim.cashless_request,
         created_at=claim.created_at,
         decision=decision_resp,
+        decided_by_human=decided_by_human,
+        effective_decision=effective_decision,
     )

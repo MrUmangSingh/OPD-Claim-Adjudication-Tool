@@ -10,6 +10,9 @@ class Settings(BaseSettings):
     allowed_origins: list[str] = ["http://localhost:3000", "https://*.vercel.app"]
     max_upload_size_mb: int = 10
     anthropic_model: str = "claude-sonnet-4-6"
+    jwt_secret: str = ""
+    jwt_algorithm: str = "HS256"
+    jwt_expire_minutes: int = 480
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 

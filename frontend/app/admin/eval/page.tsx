@@ -7,8 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatCurrency } from "@/lib/utils";
 import { CheckCircle2, XCircle, Play, Loader2, BarChart3 } from "lucide-react";
+import { AuthGate } from "@/components/auth-gate";
 
-export default function EvalPage() {
+function EvalPageContent() {
   const [result, setResult] = useState<EvalResult | null>(null);
   const [running, setRunning] = useState(false);
 
@@ -119,5 +120,13 @@ export default function EvalPage() {
         </Card>
       )}
     </div>
+  );
+}
+
+export default function EvalPage() {
+  return (
+    <AuthGate requiredRole="admin">
+      <EvalPageContent />
+    </AuthGate>
   );
 }

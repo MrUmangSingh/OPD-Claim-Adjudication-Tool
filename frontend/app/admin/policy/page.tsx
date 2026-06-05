@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { formatCurrency } from "@/lib/utils";
 import { ShieldCheck, Loader2, Pencil, Save, X } from "lucide-react";
 import { toast } from "sonner";
+import { AuthGate } from "@/components/auth-gate";
 
 function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -18,7 +19,7 @@ function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
-export default function PolicyPage() {
+function PolicyPageContent() {
   const [policy, setPolicy] = useState<Record<string, unknown> | null>(null);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
@@ -255,5 +256,13 @@ export default function PolicyPage() {
         </Card>
       </div>
     </div>
+  );
+}
+
+export default function PolicyPage() {
+  return (
+    <AuthGate requiredRole="admin">
+      <PolicyPageContent />
+    </AuthGate>
   );
 }

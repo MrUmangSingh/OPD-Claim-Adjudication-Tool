@@ -1,9 +1,10 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
+from ..auth import require_admin
 from ..db import get_db
 from ..models import Member
 
-router = APIRouter(prefix="/members", tags=["members"])
+router = APIRouter(prefix="/members", tags=["members"], dependencies=[Depends(require_admin)])
 
 
 @router.get("")

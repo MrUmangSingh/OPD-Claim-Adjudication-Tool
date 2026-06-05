@@ -6,8 +6,9 @@ import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import { api, Claim } from "@/lib/api";
 import { ClaimDetailView } from "@/components/claim-detail-view";
+import { AuthGate } from "@/components/auth-gate";
 
-export default function ClaimDetailPage() {
+function ClaimDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [claim, setClaim] = useState<Claim | null>(null);
   const [loading, setLoading] = useState(true);
@@ -48,4 +49,12 @@ export default function ClaimDetailPage() {
   );
 
   return <ClaimDetailView claim={claim} />;
+}
+
+export default function Page() {
+  return (
+    <AuthGate>
+      <ClaimDetailPage />
+    </AuthGate>
+  );
 }

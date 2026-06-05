@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { api, Member } from "@/lib/api";
+import { api } from "@/lib/api";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,6 +10,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Upload, X, FileText, Loader2 } from "lucide-react";
+import { useAuth } from "@/lib/auth-context";
+import { AuthGate } from "@/components/auth-gate";
 
 interface UploadedFile {
   file: File;
@@ -23,23 +25,18 @@ const DOC_TYPES = [
   { value: "pharmacy_bill", label: "Pharmacy Bill" },
 ];
 
-export default function NewClaimPage() {
+function NewClaimForm() {
   const router = useRouter();
-  const [members, setMembers] = useState<Member[]>([]);
+  const { user } = useAuth();
   const [submitting, setSubmitting] = useState(false);
 
   const [form, setForm] = useState({
-    member_id: "",
     treatment_date: "",
     claim_amount: "",
     hospital: "",
     cashless_request: false,
   });
   const [files, setFiles] = useState<UploadedFile[]>([]);
-
-  useEffect(() => {
-    api.getMembers().then(setMembers).catch(() => {});
-  }, []);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -55,14 +52,12 @@ export default function NewClaimPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.member_id) { toast.error("Please select a member"); return; }
     if (!form.treatment_date) { toast.error("Please enter treatment date"); return; }
     if (!form.claim_amount) { toast.error("Please enter claim amount"); return; }
 
     setSubmitting(true);
     try {
       const fd = new FormData();
-      fd.append("member_id", form.member_id);
       fd.append("treatment_date", form.treatment_date);
       fd.append("claim_amount", form.claim_amount);
       if (form.hospital) fd.append("hospital", form.hospital);
@@ -93,20 +88,8 @@ export default function NewClaimPage() {
         <Card>
           <CardHeader><CardTitle className="text-base">Claim Details</CardTitle></CardHeader>
           <CardContent className="space-y-4">
-            <div className="space-y-1.5">
-              <Label>Member</Label>
-              <Select value={form.member_id} onValueChange={(v) => v && setForm({ ...form, member_id: v })}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select member…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {members.map((m) => (
-                    <SelectItem key={m.member_id} value={m.member_id}>
-                      {m.name} ({m.member_id})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="p-3 bg-blue-50 rounded-lg text-sm text-blue-800">
+              Submitting as: <strong>{user?.name}</strong> ({user?.member_id})
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -193,5 +176,13 @@ export default function NewClaimPage() {
         </div>
       </form>
     </div>
+  );
+}
+
+export default function NewClaimPage() {
+  return (
+    <AuthGate requiredRole="employee">
+      <NewClaimForm />
+    </AuthGate>
   );
 }

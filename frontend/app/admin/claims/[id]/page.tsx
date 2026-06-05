@@ -14,8 +14,9 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { AuthGate } from "@/components/auth-gate";
 
-export default function AdminClaimDetailPage() {
+function AdminClaimDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [claim, setClaim] = useState<Claim | null>(null);
   const [loading, setLoading] = useState(true);
@@ -119,4 +120,12 @@ export default function AdminClaimDetailPage() {
   ) : null;
 
   return <ClaimDetailView claim={claim} adminPanel={overridePanel} backHref="/" />;
+}
+
+export default function Page() {
+  return (
+    <AuthGate requiredRole="admin">
+      <AdminClaimDetailPage />
+    </AuthGate>
+  );
 }

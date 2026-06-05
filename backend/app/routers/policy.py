@@ -1,10 +1,11 @@
 from fastapi import APIRouter, Body, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
+from ..auth import require_admin
 from ..db import get_db
 from ..models import Policy
 
-router = APIRouter(prefix="/policy", tags=["policy"])
+router = APIRouter(prefix="/policy", tags=["policy"], dependencies=[Depends(require_admin)])
 
 
 REQUIRED_TOP_LEVEL_KEYS = {

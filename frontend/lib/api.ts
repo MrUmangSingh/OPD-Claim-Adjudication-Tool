@@ -1,5 +1,17 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
 
+const TOKEN_KEY = "opd_token";
+
+function getToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem(TOKEN_KEY);
+}
+
+function authHeaders(): Record<string, string> {
+  const token = getToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 export interface DecisionLineItem {
   id: number;
   name: string;
@@ -47,6 +59,8 @@ export interface Claim {
   cashless_request: boolean;
   created_at: string;
   decision?: Decision;
+  decided_by_human: boolean;
+  effective_decision?: string;
 }
 
 export interface Member {
@@ -79,11 +93,35 @@ export interface EvalResult {
   cases: EvalCaseResult[];
 }
 
+export interface CategoryBenefit {
+  category: string;
+  label: string;
+  limit: number;
+  used: number;
+  remaining: number | null;
+}
+
+export interface Benefits {
+  annual_limit: number;
+  per_claim_limit: number;
+  used_ytd: number;
+  remaining: number;
+  year: number;
+  by_category: CategoryBenefit[];
+  network_hospitals: string[];
+  covered_tests: string[];
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
     ...options,
-    headers: { "Content-Type": "application/json", ...options?.headers },
+    headers: { "Content-Type": "application/json", ...authHeaders(), ...options?.headers },
   });
+  if (res.status === 401) {
+    localStorage.removeItem(TOKEN_KEY);
+    window.location.href = "/login";
+    throw new Error("Unauthorized");
+  }
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`API error ${res.status}: ${text}`);
@@ -108,7 +146,12 @@ export const api = {
     }),
 
   submitClaim: (formData: FormData) =>
-    fetch(`${API_URL}/claims`, { method: "POST", body: formData }).then((r) => {
+    fetch(`${API_URL}/claims`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: formData,
+    }).then((r) => {
+      if (r.status === 401) { localStorage.removeItem(TOKEN_KEY); window.location.href = "/login"; throw new Error("Unauthorized"); }
       if (!r.ok) throw new Error(`Submission failed: ${r.status}`);
       return r.json() as Promise<Claim>;
     }),
@@ -125,5 +168,13 @@ export const api = {
     }),
 
   runEval: () =>
-    fetch(`${API_URL}/eval/adjudication`, { method: "POST" }).then((r) => r.json() as Promise<EvalResult>),
+    fetch(`${API_URL}/eval/adjudication`, {
+      method: "POST",
+      headers: authHeaders(),
+    }).then((r) => {
+      if (r.status === 401) { localStorage.removeItem(TOKEN_KEY); window.location.href = "/login"; throw new Error("Unauthorized"); }
+      return r.json() as Promise<EvalResult>;
+    }),
+
+  getMyBenefits: () => request<Benefits>("/me/benefits"),
 };

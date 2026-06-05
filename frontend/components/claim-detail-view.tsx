@@ -95,7 +95,7 @@ export function ClaimDetailView({ claim, adminPanel, backHref = "/" }: ClaimDeta
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-bold text-gray-900">{claim.claim_ref}</h1>
             <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusColors[claim.status]}`}>
-              {claim.status.replace("_", " ")}
+              {claim.status.replaceAll("_", " ")}
             </span>
           </div>
           <p className="text-sm text-gray-500">
@@ -110,7 +110,7 @@ export function ClaimDetailView({ claim, adminPanel, backHref = "/" }: ClaimDeta
             <Loader2 className="h-5 w-5 animate-spin text-blue-500" />
             <div>
               <p className="font-medium text-blue-800">Processing claim…</p>
-              <p className="text-sm text-blue-600">AI is extracting documents and running adjudication. This takes ~10 seconds.</p>
+              <p className="text-sm text-blue-600">AI is extracting documents and running adjudication. This takes ~1 minute.</p>
             </div>
           </CardContent>
         </Card>
@@ -128,7 +128,7 @@ export function ClaimDetailView({ claim, adminPanel, backHref = "/" }: ClaimDeta
                         decision.decision === "REJECTED" ? <XCircle className="h-4 w-4" /> :
                           decision.decision === "MANUAL_REVIEW" ? <AlertTriangle className="h-4 w-4" /> :
                             <CheckCircle2 className="h-4 w-4" />}
-                      {decision.decision.replace("_", " ")}
+                      {decision.decision.replaceAll("_", " ")}
                     </div>
                     <div className="mt-3 space-y-0.5">
                       <p className="text-3xl font-bold text-gray-900">{formatCurrency(decision.approved_amount)}</p>
