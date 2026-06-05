@@ -6,7 +6,7 @@ Key spec-interpretation decisions (cite test case for each):
   - TC002 vs TC003: effective_cap = sub_limit if category has sub_limit, else per_claim_limit
   - TC006: doctor reg accepts multi-segment AYUR/KL/... format
   - TC007: pre-auth required = "(with pre-auth)" suffix in covered_tests (no ₹ threshold)
-  - TC008: fraud flags → MANUAL_REVIEW, never auto-REJECT
+  - TC008: fraud flags → MANUAL_REVIEW; exception: severe name mismatch (similarity < 0.3) → auto-REJECT
   - TC010: network hospital → 20% flat discount on eligible total, copay suppressed
 """
 
@@ -342,8 +342,12 @@ def adjudicate(
     has_partial = any(li.status == "rejected" for li in line_items) and any(li.status == "approved" for li in line_items)
     all_rejected = all(li.status == "rejected" for li in line_items) if line_items else False
 
-    if is_fraud_flagged:
-        # TC008: fraud indicators → MANUAL_REVIEW (never auto-reject)
+    if fraud_result and fraud_result.hard_reject:
+        # Severe name mismatch (names share no resemblance) → clearly a different person's document
+        final_decision = "REJECTED"
+        eligible_total = 0.0
+    elif is_fraud_flagged:
+        # TC008: other fraud indicators → MANUAL_REVIEW (never auto-reject)
         final_decision = "MANUAL_REVIEW"
     elif hard_rejections:
         final_decision = "REJECTED"
@@ -357,10 +361,15 @@ def adjudicate(
         final_decision = "APPROVED"
 
     # Confidence
+    # Name mismatch hard-reject is a certain finding — don't penalize confidence for it.
+    # Only uncertain fraud signals (high value, same-day, low extraction) reduce confidence.
+    uncertain_fraud_flags = [
+        f for f in flags if "Patient name mismatch" not in f
+    ] if (fraud_result and fraud_result.hard_reject) else flags
     borderline = sum(1 for r in steps if not r.passed and len(r.reasons) == 1)
     low_conf_fields = 1 if extraction_confidence < 0.7 else 0
     score = compute_confidence(
-        fraud_flag_count=len(flags),
+        fraud_flag_count=len(uncertain_fraud_flags),
         extraction_field_low_confidence_count=low_conf_fields,
         medical_necessity_confidence=medical_confidence,
         borderline_rule_count=borderline,
@@ -429,7 +438,12 @@ def _build_notes(reasons: list[str], flags: list[str], diagnosis: Optional[str],
         elif r == "COSMETIC_PROCEDURE":
             parts.append("Cosmetic procedures are excluded from coverage.")
     if flags:
-        parts.append("Fraud indicators: " + "; ".join(flags))
+        name_mismatch = next((f for f in flags if "Patient name mismatch" in f), None)
+        other_flags = [f for f in flags if f is not name_mismatch]
+        if name_mismatch:
+            parts.append(f"Rejected: {name_mismatch}. Document does not belong to the insured member.")
+        if other_flags:
+            parts.append("Fraud indicators: " + "; ".join(other_flags))
     return " ".join(parts) if parts else f"Approved amount: ₹{amount:,.2f}"
 
 

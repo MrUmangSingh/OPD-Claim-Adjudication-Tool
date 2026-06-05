@@ -203,7 +203,7 @@ export function ClaimDetailView({ claim, adminPanel, backHref = "/" }: ClaimDeta
             </Card>
           )}
 
-          {decision?.line_items && decision.line_items.length > 0 && (
+          {decision?.line_items && decision.line_items.length > 0 && decision.decision !== "REJECTED" && (
             <Card>
               <CardHeader className="pb-3"><CardTitle className="text-base">Line Items</CardTitle></CardHeader>
               <CardContent>

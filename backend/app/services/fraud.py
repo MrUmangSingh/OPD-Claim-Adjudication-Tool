@@ -4,6 +4,7 @@ from difflib import SequenceMatcher
 
 _NAME_TITLES = {"mr", "mrs", "ms", "miss", "dr", "shri", "smt", "sri", "mx"}
 NAME_SIMILARITY_THRESHOLD = 0.7
+NAME_HARD_REJECT_THRESHOLD = 0.3  # below this = clearly different person → auto-reject
 
 
 def _normalize_name(name: str) -> str:
@@ -29,6 +30,7 @@ def _name_similarity(a: str, b: str) -> float:
 class FraudResult:
     flagged: bool = False
     flags: list[str] = field(default_factory=list)
+    hard_reject: bool = False  # True when name mismatch is severe enough to auto-reject
 
 
 def check_fraud(
@@ -49,11 +51,14 @@ def check_fraud(
     if extraction_confidence < 0.5:
         flags.append("Low document extraction confidence — possible illegible/modified document")
 
+    hard_reject = False
     if document_patient_name and member_name:
         similarity = _name_similarity(document_patient_name, member_name)
         if similarity < NAME_SIMILARITY_THRESHOLD:
             flags.append(
                 f"Patient name mismatch: document='{document_patient_name}' vs member='{member_name}'"
             )
+            if similarity < NAME_HARD_REJECT_THRESHOLD:
+                hard_reject = True
 
-    return FraudResult(flagged=bool(flags), flags=flags)
+    return FraudResult(flagged=bool(flags), flags=flags, hard_reject=hard_reject)
