@@ -129,7 +129,27 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return res.json();
 }
 
+export interface AuthResponse {
+  access_token: string;
+  token_type: string;
+  user: { member_id: string; name: string; email: string; role: string };
+}
+
 export const api = {
+  signup: (name: string, email: string, password: string) =>
+    fetch(`${API_URL}/auth/signup`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, email, password }),
+    }).then(async (r) => {
+      if (!r.ok) {
+        const text = await r.text();
+        throw new Error(`API error ${r.status}: ${text}`);
+      }
+      return r.json() as Promise<AuthResponse>;
+    }),
+
+
   getClaims: (status?: string) =>
     request<Claim[]>(`/claims${status ? `?status=${status}` : ""}`),
 
